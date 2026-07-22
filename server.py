@@ -277,7 +277,7 @@ class AudioTranscriber:
                     self.rms_history.pop(0)
                 
                 noise_floor = np.percentile(self.rms_history, 20)
-                self.silence_threshold = max(300, min(2500, int(noise_floor + 200)))
+                self.silence_threshold = max(150, min(700, int(noise_floor + 100)))
                 
                 # Send volume level to client for visualization
                 # Map volume to a 0-100 range
