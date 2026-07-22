@@ -1,6 +1,71 @@
 let currentAudio = null;
 let currentPlayButton = null;
 
+// Define playSessionAudio to play consolidated session audio starting from startTime
+window.playSessionAudio = function(sessionId, startTime, buttonEl) {
+    if (!sessionId || !buttonEl) return;
+    
+    // If clicked on the currently playing button, pause it
+    if (currentAudio && currentPlayButton === buttonEl) {
+        currentAudio.pause();
+        return;
+    }
+    
+    // Stop any currently playing audio first
+    if (currentAudio) {
+        currentAudio.pause();
+    }
+    
+    currentAudio = new Audio(`/api/audio/${sessionId}`);
+    currentPlayButton = buttonEl;
+    
+    // Change button icon to pause (||)
+    const icon = buttonEl.querySelector("i");
+    if (icon) {
+        icon.className = "fa-solid fa-pause";
+    }
+    
+    // Disable and fade other play buttons
+    const allButtons = document.querySelectorAll(".btn-play-audio");
+    allButtons.forEach(btn => {
+        if (btn !== buttonEl) {
+            btn.disabled = true;
+            btn.style.opacity = "0.25";
+            btn.style.pointerEvents = "none";
+        }
+    });
+    
+    function resetPlaybackState() {
+        if (icon) {
+            icon.className = "fa-solid fa-play";
+        }
+        allButtons.forEach(btn => {
+            btn.disabled = false;
+            btn.style.opacity = "";
+            btn.style.pointerEvents = "";
+        });
+        currentAudio = null;
+        currentPlayButton = null;
+    }
+    
+    currentAudio.onended = resetPlaybackState;
+    currentAudio.onpause = resetPlaybackState;
+    
+    // Seek to startTime once metadata is loaded
+    currentAudio.addEventListener("loadedmetadata", () => {
+        currentAudio.currentTime = startTime;
+    });
+    
+    if (currentAudio.readyState >= 1) {
+        currentAudio.currentTime = startTime;
+    }
+    
+    currentAudio.play().catch(err => {
+        console.error("오디오 재생 실패:", err);
+        resetPlaybackState();
+    });
+};
+
 // Define playAudio globally so it can be called from onclick attributes
 window.playAudio = function(segmentId, buttonEl) {
     if (!segmentId || !buttonEl) return;
@@ -189,7 +254,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 
                 if (msg.segments && msg.segments.length > 0) {
                     msg.segments.forEach(seg => {
-                        addCaption(seg.text, seg.segment_id, seg.isMissed || false, seg.duration);
+                        addCaption(seg.text, msg.session_id, seg.isMissed || false, seg.duration, seg.start_time);
                     });
                 }
             } else if (msg.type === "status") {
@@ -285,7 +350,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // Add Caption to screen (Unified Feed)
-    function addCaption(text, segmentId, isMissed = false, duration = null) {
+    function addCaption(text, segmentId, isMissed = false, duration = null, startTime = 0) {
         const placeholder = captionBody.querySelector(".caption-placeholder");
         if (placeholder) {
             captionBody.innerHTML = "";
@@ -309,9 +374,11 @@ document.addEventListener("DOMContentLoaded", () => {
             newLine.className = "caption-line live missed-caption";
             newLine.style.fontSize = `${fontSize}rem`;
             
+            const onclickAttr = startTime !== null && startTime !== undefined ? `playSessionAudio('${segmentId}', ${startTime}, this)` : `playAudio('${segmentId}', this)`;
+            
             newLine.innerHTML = `
                 <div class="line-content">
-                    <button class="btn-play-audio" onclick="playAudio('${segmentId}', this)" title="다시 듣기">
+                    <button class="btn-play-audio" onclick="${onclickAttr}" title="여기서부터 듣기">
                         <i class="fa-solid fa-play"></i>
                     </button>
                     <span class="missed-badge" title="발음 불명확 (클릭하여 다시 듣기)">
@@ -322,8 +389,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 </div>
             `;
             captionBody.appendChild(newLine);
-            
-            // Exclude [미인식 구간] from historyList right-panel display per user request
             
             historyTranscripts.push({ text: "[미인식 구간]", isSystemTag: false, isMissed: true });
             
@@ -344,9 +409,11 @@ document.addEventListener("DOMContentLoaded", () => {
                 newLine.className = "caption-line live";
                 newLine.style.fontSize = `${fontSize}rem`;
                 
+                const onclickAttr = startTime !== null && startTime !== undefined ? `playSessionAudio('${segmentId}', ${startTime}, this)` : `playAudio('${segmentId}', this)`;
+                
                 newLine.innerHTML = `
                     <div class="line-content">
-                        <button class="btn-play-audio" onclick="playAudio('${segmentId}', this)" title="다시 듣기">
+                        <button class="btn-play-audio" onclick="${onclickAttr}" title="여기서부터 듣기">
                             <i class="fa-solid fa-play"></i>
                         </button>
                         ${duration ? `<span class="audio-duration-tag">${duration}s</span>` : ''}

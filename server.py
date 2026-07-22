@@ -219,21 +219,62 @@ class AudioTranscriber:
         active_streams_count = max(0, active_streams_count - 1)
         logger.info("Stopped listening.")
         
+        # Transcribe final remaining audio buffer if not empty
+        if self.audio_buffer and len(self.audio_buffer) > 0:
+            duration = round(len(self.audio_buffer) / (self.sample_rate * self.channels * 2), 1)
+            if duration >= 0.8:
+                logger.info("Transcribing final remaining audio buffer...")
+                try:
+                    import numpy as np
+                    audio_data = np.frombuffer(self.audio_buffer, dtype=np.int16)
+                    if self.channels == 2:
+                        raw_audio_mono = ((audio_data[0::2].astype(np.int32) + audio_data[1::2].astype(np.int32)) // 2).astype(np.int16).tobytes()
+                    else:
+                        raw_audio_mono = audio_data.tobytes()
+                    audio_data_sr = sr.AudioData(raw_audio_mono, self.sample_rate, 2)
+                    text = self.recognizer.recognize_google(audio_data_sr, language=self.language)
+                    final_text = text
+                    is_missed = False
+                except Exception as e:
+                    logger.info(f"Final block transcription note: {e}")
+                    final_text = "[발음 불명확 / 미인식]"
+                    is_missed = True
+                
+                start_time_offset = round(len(self.session_audio_data) / (self.sample_rate * 2), 1)
+                self.session_audio_data.extend(raw_audio_mono)
+                self.session_segments.append({
+                    "text": final_text,
+                    "start_time": start_time_offset,
+                    "duration": duration,
+                    "isMissed": is_missed
+                })
+        
         # If in batch mode, compile and send the final list of segments
         if self.mode == "batch":
+            session_id = str(uuid.uuid4())
+            total_duration = 0.0
+            
+            if self.session_audio_data:
+                total_duration = round(len(self.session_audio_data) / (self.sample_rate * 2), 1)
+                wav_bytes = pcm_to_wav(bytes(self.session_audio_data), self.sample_rate, channels=1, sample_width=2)
+                audio_cache[session_id] = wav_bytes
+                if len(audio_cache) > 100:
+                    audio_cache.pop(next(iter(audio_cache)))
+                    
             if not self.session_segments:
                 self.session_segments.append({
                     "text": "[일괄 변환 결과 없음 / 감지된 음성 없음]",
-                    "segment_id": str(uuid.uuid4()),
+                    "start_time": 0.0,
                     "duration": 0.0,
                     "isMissed": False
                 })
             
-            logger.info(f"Sending batch result. Segments count: {len(self.session_segments)}")
+            logger.info(f"Sending batch result. Segments count: {len(self.session_segments)}, Session ID: {session_id}, Duration: {total_duration}s")
             if self.main_loop and self.websocket:
                 asyncio.run_coroutine_threadsafe(
                     self.websocket.send_json({
                         "type": "batch_result",
+                        "session_id": session_id,
                         "segments": self.session_segments,
                         "timestamp": time.time()
                     }),
@@ -392,9 +433,11 @@ class AudioTranscriber:
             logger.info(f"Transcription result: {final_text}")
             
             if self.mode == "batch":
+                start_time_offset = round(len(self.session_audio_data) / (sample_rate * sample_width), 1)
+                self.session_audio_data.extend(raw_audio_mono)
                 self.session_segments.append({
                     "text": final_text,
-                    "segment_id": segment_id,
+                    "start_time": start_time_offset,
                     "duration": duration,
                     "isMissed": False
                 })
@@ -425,9 +468,11 @@ class AudioTranscriber:
                 audio_cache.pop(next(iter(audio_cache)))
                 
             if self.mode == "batch":
+                start_time_offset = round(len(self.session_audio_data) / (sample_rate * sample_width), 1)
+                self.session_audio_data.extend(raw_audio_mono)
                 self.session_segments.append({
                     "text": "[발음 불명확 / 미인식]",
-                    "segment_id": segment_id,
+                    "start_time": start_time_offset,
                     "duration": duration,
                     "isMissed": True
                 })
