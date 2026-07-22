@@ -485,14 +485,31 @@ def shutdown_event():
     logger.info("Terminating global PyAudio instance...")
     p_audio.terminate()
 
+global_transcriber = None
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     logger.info("WebSocket connection established")
     
+    global global_transcriber
     loop = asyncio.get_running_loop()
-    transcriber = AudioTranscriber(websocket, loop)
     
+    # If there is already a running transcriber, attach the new websocket and event loop to it!
+    if global_transcriber and global_transcriber.is_running:
+        logger.info("Attaching new websocket to active background transcriber")
+        global_transcriber.websocket = websocket
+        global_transcriber.main_loop = loop
+        # Immediately notify client that we are already recording
+        await websocket.send_json({
+            "type": "status",
+            "status": "listening",
+            "message": "기존 녹음 세션에 연결되었습니다."
+        })
+    else:
+        # Create a new transcriber instance
+        global_transcriber = AudioTranscriber(websocket, loop)
+        
     try:
         while True:
             data = await websocket.receive_text()
@@ -502,15 +519,23 @@ async def websocket_endpoint(websocket: WebSocket):
             if action == "start":
                 device_index = message.get("device_index", 0)
                 language = message.get("language", "ko-KR")
-                mode = message.get("mode", "realtime")
-                success = transcriber.start_listening(device_index, language, mode)
+                mode = message.get("mode", "batch")
+                
+                if not global_transcriber:
+                    global_transcriber = AudioTranscriber(websocket, loop)
+                else:
+                    global_transcriber.websocket = websocket
+                    global_transcriber.main_loop = loop
+                    
+                success = global_transcriber.start_listening(device_index, language, mode)
                 await websocket.send_json({
                     "type": "status",
                     "status": "listening" if success else "error",
                     "message": "음성 감지를 시작했습니다." if success else "오디오 캡처 장치를 열 수 없습니다."
                 })
             elif action == "stop":
-                transcriber.stop_listening()
+                if global_transcriber:
+                    global_transcriber.stop_listening()
                 await websocket.send_json({
                     "type": "status",
                     "status": "stopped",
@@ -522,7 +547,11 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
     finally:
-        transcriber.close()
+        # DO NOT call close() or stop_listening() here so that the background thread remains active!
+        # Just detach the websocket references so we don't try to send data to a closed socket.
+        if global_transcriber:
+            global_transcriber.websocket = None
+            global_transcriber.main_loop = None
 
 # Mount frontend static files
 # Make sure this directory exists or we create it

@@ -195,7 +195,27 @@ document.addEventListener("DOMContentLoaded", () => {
             } else if (msg.type === "status") {
                 if (msg.status === "listening") {
                     updateStatus("listening", "녹음/분석 중");
-                    addSystemTag("(녹음시작)");
+                    
+                    // Sync UI state in case of reconnection
+                    isListening = true;
+                    startBtn.disabled = true;
+                    stopBtn.disabled = false;
+                    deviceSelect.disabled = true;
+                    languageSelect.disabled = true;
+                    
+                    const placeholder = captionBody.querySelector(".caption-placeholder");
+                    if (placeholder) {
+                        captionBody.innerHTML = "";
+                    }
+                    if (!captionBody.querySelector(".batch-recording-placeholder") && !captionBody.querySelector(".caption-line")) {
+                        const batchMsg = document.createElement("div");
+                        batchMsg.className = "caption-line live batch-recording-placeholder";
+                        batchMsg.style.fontSize = `${fontSize}rem`;
+                        batchMsg.style.color = "var(--text-muted)";
+                        batchMsg.style.fontStyle = "italic";
+                        batchMsg.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> 일괄 변환 녹음이 진행 중입니다. 소리가 감지되고 있으며, 중지 버튼을 누르면 누적된 전체 내용이 한 번에 타이핑됩니다...`;
+                        captionBody.appendChild(batchMsg);
+                    }
                 } else if (msg.status === "stopped") {
                     updateStatus("active", "대기 중");
                     addSystemTag("(녹음중지)");
@@ -210,12 +230,10 @@ document.addEventListener("DOMContentLoaded", () => {
         };
         
         ws.onclose = () => {
-            console.log("WebSocket 연결 닫힘");
-            updateStatus("default", "서버 연결 해제됨");
-            if (isListening) {
-                handleStop();
-            }
-            // Auto reconnect after 3 seconds
+            console.log("WebSocket 연결 닫힘 (재연결 시도 중)");
+            updateStatus("default", "서버 연결 해제됨 (재연결 중)");
+            // Do not call handleStop() to keep the local UI listening state intact!
+            // Reconnection will automatically hook back to the active background session.
             setTimeout(connectWebSocket, 3000);
         };
 
