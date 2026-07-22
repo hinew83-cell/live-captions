@@ -278,6 +278,19 @@ select option {
     overflow: hidden;
 }
 
+.sidebar-visualizer {
+    height: 65px;
+    margin-top: 0.5rem;
+}
+
+.sidebar-visualizer .audio-state-text {
+    right: auto;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 0.75rem;
+    white-space: nowrap;
+}
+
 #waveform-canvas {
     width: 100%;
     height: 100%;
@@ -294,6 +307,20 @@ select option {
     pointer-events: none;
     font-weight: 500;
     letter-spacing: 0.5px;
+}
+
+.version-badge {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.08);
+    padding: 0.15rem 0.45rem;
+    border-radius: 6px;
+    margin-left: 0.5rem;
+    vertical-align: middle;
+    display: inline-block;
+    -webkit-text-fill-color: var(--text-secondary);
+    border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 /* Glass Cards */

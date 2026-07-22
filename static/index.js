@@ -143,6 +143,12 @@ document.addEventListener("DOMContentLoaded", () => {
     
     const canvas = document.getElementById("waveform-canvas");
     const ctx = canvas.getContext("2d");
+    
+    // Explicitly declare floating elements to prevent ReferenceErrors
+    const floatModeBtn = document.getElementById("float-mode-btn");
+    const floatingOverlay = document.getElementById("floating-overlay");
+    const closeFloatBtn = document.getElementById("close-float-btn");
+    const floatingText = document.getElementById("floating-text");
 
 
     // State Variables
