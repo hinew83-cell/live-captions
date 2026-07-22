@@ -188,7 +188,11 @@ document.addEventListener("DOMContentLoaded", () => {
                     placeholder.remove();
                 }
                 
-                addCaption(msg.text, msg.segment_id, false, msg.duration);
+                if (msg.segments && msg.segments.length > 0) {
+                    msg.segments.forEach(seg => {
+                        addCaption(seg.text, seg.segment_id, seg.isMissed || false, seg.duration);
+                    });
+                }
             } else if (msg.type === "status") {
                 if (msg.status === "listening") {
                     updateStatus("listening", "녹음/분석 중");

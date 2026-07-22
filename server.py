@@ -93,7 +93,7 @@ class AudioTranscriber:
         self.language = "ko-KR"
         self.mode = "realtime"
         self.session_audio_data = bytearray()
-        self.session_transcripts = []
+        self.session_segments = []
         self.silence_threshold = 300  # Dynamic starting threshold
         self.silence_duration = 0.95  # Natural pause trigger (0.95s gap)
         self.max_speech_duration = 7.5  # Collect up to 7.5s of speech for rich context
@@ -145,7 +145,7 @@ class AudioTranscriber:
         self.language = language
         self.mode = mode
         self.session_audio_data = bytearray()
-        self.session_transcripts = []
+        self.session_segments = []
         self.is_running = True
         self.audio_buffer = bytearray()
         self.speech_started = False
@@ -219,30 +219,22 @@ class AudioTranscriber:
         active_streams_count = max(0, active_streams_count - 1)
         logger.info("Stopped listening.")
         
-        # If in batch mode, compile and send the final merged result
+        # If in batch mode, compile and send the final list of segments
         if self.mode == "batch":
-            combined_text = " ".join(self.session_transcripts).strip()
-            if not combined_text:
-                combined_text = "[일괄 변환 결과 없음 / 감지된 음성 없음]"
-                
-            session_id = str(uuid.uuid4())
-            total_duration = 0.0
+            if not self.session_segments:
+                self.session_segments.append({
+                    "text": "[일괄 변환 결과 없음 / 감지된 음성 없음]",
+                    "segment_id": str(uuid.uuid4()),
+                    "duration": 0.0,
+                    "isMissed": False
+                })
             
-            if self.session_audio_data:
-                total_duration = round(len(self.session_audio_data) / (self.sample_rate * 2), 1) # 2 bytes per sample (paInt16)
-                wav_bytes = pcm_to_wav(bytes(self.session_audio_data), self.sample_rate, channels=1, sample_width=2)
-                audio_cache[session_id] = wav_bytes
-                if len(audio_cache) > 100:
-                    audio_cache.pop(next(iter(audio_cache)))
-            
-            logger.info(f"Sending batch result. Text: {combined_text}, Duration: {total_duration}s")
+            logger.info(f"Sending batch result. Segments count: {len(self.session_segments)}")
             if self.main_loop and self.websocket:
                 asyncio.run_coroutine_threadsafe(
                     self.websocket.send_json({
                         "type": "batch_result",
-                        "text": combined_text,
-                        "segment_id": session_id,
-                        "duration": total_duration,
+                        "segments": self.session_segments,
                         "timestamp": time.time()
                     }),
                     self.main_loop
@@ -400,8 +392,12 @@ class AudioTranscriber:
             logger.info(f"Transcription result: {final_text}")
             
             if self.mode == "batch":
-                self.session_audio_data.extend(raw_audio_mono)
-                self.session_transcripts.append(final_text)
+                self.session_segments.append({
+                    "text": final_text,
+                    "segment_id": segment_id,
+                    "duration": duration,
+                    "isMissed": False
+                })
             else:
                 if self.main_loop and self.websocket:
                     asyncio.run_coroutine_threadsafe(
@@ -422,18 +418,20 @@ class AudioTranscriber:
             if duration < 0.8:
                 return
                 
+            segment_id = str(uuid.uuid4())
+            wav_bytes = pcm_to_wav(raw_audio_mono, sample_rate, channels=1, sample_width=sample_width)
+            audio_cache[segment_id] = wav_bytes
+            if len(audio_cache) > 100:
+                audio_cache.pop(next(iter(audio_cache)))
+                
             if self.mode == "batch":
-                self.session_audio_data.extend(raw_audio_mono)
-                # In batch mode, we skip adding anything to session_transcripts for missed blocks 
-                # so the text flow is fully continuous.
+                self.session_segments.append({
+                    "text": "[발음 불명확 / 미인식]",
+                    "segment_id": segment_id,
+                    "duration": duration,
+                    "isMissed": True
+                })
             else:
-                # Cache the audio even if unrecognized, so the user can listen to it
-                segment_id = str(uuid.uuid4())
-                wav_bytes = pcm_to_wav(raw_audio_mono, sample_rate, channels=1, sample_width=sample_width)
-                audio_cache[segment_id] = wav_bytes
-                if len(audio_cache) > 100:
-                    audio_cache.pop(next(iter(audio_cache)))
-                    
                 if self.main_loop and self.websocket:
                     asyncio.run_coroutine_threadsafe(
                         self.websocket.send_json({
