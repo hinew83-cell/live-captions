@@ -19,7 +19,7 @@
         <aside class="sidebar">
             <div class="brand">
                 <i class="fa-solid fa-waveform-lines brand-icon"></i>
-                <h1>LiveCaptions <span class="version-badge">v0.12</span></h1>
+                <h1>LiveCaptions <span class="version-badge">v0.13</span></h1>
             </div>
             
             <div class="control-group">
@@ -58,19 +58,22 @@
                 </div>
             </div>
 
-            <div class="control-group settings-details">
-                <div class="status-indicator">
-                    <span class="status-dot" id="status-dot"></span>
-                    <span id="status-text">대기 중</span>
+            <!-- Visualizer & Status Info Grouped at Sidebar Bottom -->
+            <div class="sidebar-bottom-group" style="margin-top: auto; display: flex; flex-direction: column; gap: 0.5rem;">
+                <div class="control-group settings-details" style="border-top: 1px solid var(--border-color); padding-top: 0.75rem; margin-top: 0;">
+                    <div class="status-indicator">
+                        <span class="status-dot" id="status-dot"></span>
+                        <span id="status-text">대기 중</span>
+                    </div>
+                </div>
+
+                <div class="visualizer-container sidebar-visualizer" style="margin-top: 0;">
+                    <canvas id="waveform-canvas"></canvas>
+                    <div class="audio-state-text" id="audio-amplitude">오디오 신호 없음</div>
                 </div>
             </div>
 
-            <div class="visualizer-container sidebar-visualizer">
-                <canvas id="waveform-canvas"></canvas>
-                <div class="audio-state-text" id="audio-amplitude">오디오 신호 없음</div>
-            </div>
-
-            <div class="sidebar-footer">
+            <div class="sidebar-footer" style="margin-top: 0;">
                 <button id="float-mode-btn" class="btn btn-secondary btn-full">
                     <i class="fa-solid fa-expand"></i> 플로팅 모드 전환
                 </button>

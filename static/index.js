@@ -1,9 +1,11 @@
 let currentAudio = null;
 let currentPlayButton = null;
 
-// Define playSessionAudio to play consolidated session audio starting from startTime
-window.playSessionAudio = function(sessionId, startTime, buttonEl) {
+// Define playSessionAudio to play consolidated session audio starting from startTime and auto-pausing after duration
+window.playSessionAudio = function(sessionId, startTime, duration, buttonEl) {
     if (!sessionId || !buttonEl) return;
+    
+    const endTime = startTime + duration;
     
     // If clicked on the currently playing button, pause it
     if (currentAudio && currentPlayButton === buttonEl) {
@@ -44,12 +46,22 @@ window.playSessionAudio = function(sessionId, startTime, buttonEl) {
             btn.style.opacity = "";
             btn.style.pointerEvents = "";
         });
+        if (currentAudio) {
+            currentAudio.removeEventListener("timeupdate", checkTimeLimit);
+        }
         currentAudio = null;
         currentPlayButton = null;
     }
     
+    function checkTimeLimit() {
+        if (currentAudio && currentAudio.currentTime >= endTime) {
+            currentAudio.pause();
+        }
+    }
+    
     currentAudio.onended = resetPlaybackState;
     currentAudio.onpause = resetPlaybackState;
+    currentAudio.addEventListener("timeupdate", checkTimeLimit);
     
     // Seek to startTime once metadata is loaded
     currentAudio.addEventListener("loadedmetadata", () => {
@@ -380,7 +392,7 @@ document.addEventListener("DOMContentLoaded", () => {
             newLine.className = "caption-line live missed-caption";
             newLine.style.fontSize = `${fontSize}rem`;
             
-            const onclickAttr = startTime !== null && startTime !== undefined ? `playSessionAudio('${segmentId}', ${startTime}, this)` : `playAudio('${segmentId}', this)`;
+            const onclickAttr = startTime !== null && startTime !== undefined ? `playSessionAudio('${segmentId}', ${startTime}, ${duration}, this)` : `playAudio('${segmentId}', this)`;
             
             newLine.innerHTML = `
                 <div class="line-content">
@@ -415,7 +427,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 newLine.className = "caption-line live";
                 newLine.style.fontSize = `${fontSize}rem`;
                 
-                const onclickAttr = startTime !== null && startTime !== undefined ? `playSessionAudio('${segmentId}', ${startTime}, this)` : `playAudio('${segmentId}', this)`;
+                const onclickAttr = startTime !== null && startTime !== undefined ? `playSessionAudio('${segmentId}', ${startTime}, ${duration}, this)` : `playAudio('${segmentId}', this)`;
                 
                 newLine.innerHTML = `
                     <div class="line-content">
