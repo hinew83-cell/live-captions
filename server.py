@@ -240,11 +240,9 @@ class AudioTranscriber:
                     final_text = "[발음 불명확 / 미인식]"
                     is_missed = True
                 
-                start_time_offset = round(len(self.session_audio_data) / (self.sample_rate * 2), 1)
-                self.session_audio_data.extend(raw_audio_mono)
                 self.session_segments.append({
                     "text": final_text,
-                    "start_time": start_time_offset,
+                    "start_time": self.current_segment_start_time,
                     "duration": duration,
                     "isMissed": is_missed
                 })
@@ -309,6 +307,14 @@ class AudioTranscriber:
                 if len(audio_data) == 0:
                     continue
                 
+                if self.channels == 2:
+                    chunk_mono = ((audio_data[0::2].astype(np.int32) + audio_data[1::2].astype(np.int32)) // 2).astype(np.int16).tobytes()
+                else:
+                    chunk_mono = audio_data.tobytes()
+                
+                if self.mode == "batch":
+                    self.session_audio_data.extend(chunk_mono)
+                
                 # Calculate RMS volume level
                 rms = np.sqrt(np.mean(audio_data.astype(np.float64)**2))
                 
@@ -336,7 +342,8 @@ class AudioTranscriber:
                 if is_speech:
                     if not self.speech_started:
                         self.speech_started = True
-                        logger.info("Speech started.")
+                        self.current_segment_start_time = round(len(self.session_audio_data) / (self.sample_rate * 2), 1)
+                        logger.info(f"Speech started at session offset: {self.current_segment_start_time}s")
                         if self.main_loop and self.websocket:
                             asyncio.run_coroutine_threadsafe(
                                 self.websocket.send_json({"type": "speech_started"}),
@@ -352,7 +359,7 @@ class AudioTranscriber:
                         elif time.time() - silence_start_time > self.silence_duration:
                             # Silence duration exceeded, trigger transcription
                             logger.info("Silence detected. Transcribing segment...")
-                            self._trigger_transcribe(bytes(self.audio_buffer), sample_width)
+                            self._trigger_transcribe(bytes(self.audio_buffer), sample_width, self.current_segment_start_time)
                             self.audio_buffer = bytearray()
                             self.speech_started = False
                             silence_start_time = None
@@ -361,7 +368,7 @@ class AudioTranscriber:
                 duration = len(self.audio_buffer) / (self.sample_rate * self.channels * sample_width)
                 if duration > self.max_speech_duration:
                     logger.info("Max speech duration reached. Forcing transcription...")
-                    self._trigger_transcribe(bytes(self.audio_buffer), sample_width)
+                    self._trigger_transcribe(bytes(self.audio_buffer), sample_width, self.current_segment_start_time)
                     self.audio_buffer = bytearray()
                     self.speech_started = False
                     silence_start_time = None
@@ -370,16 +377,16 @@ class AudioTranscriber:
                 logger.error(f"Error in audio loop: {e}")
                 time.sleep(0.1)
 
-    def _trigger_transcribe(self, raw_audio, sample_width):
+    def _trigger_transcribe(self, raw_audio, sample_width, start_time):
         # run transcription in a separate thread so it doesn't block audio capture
         t = threading.Thread(
             target=self._transcribe_worker, 
-            args=(raw_audio, sample_width, self.sample_rate, self.channels, self.language),
+            args=(raw_audio, sample_width, self.sample_rate, self.channels, self.language, start_time),
             daemon=True
         )
         t.start()
 
-    def _transcribe_worker(self, raw_audio, sample_width, sample_rate, channels, language):
+    def _transcribe_worker(self, raw_audio, sample_width, sample_rate, channels, language, start_time):
         try:
             # Check if there's enough sound to transcribe
             audio_np = np.frombuffer(raw_audio, dtype=np.int16)
@@ -433,11 +440,9 @@ class AudioTranscriber:
             logger.info(f"Transcription result: {final_text}")
             
             if self.mode == "batch":
-                start_time_offset = round(len(self.session_audio_data) / (sample_rate * sample_width), 1)
-                self.session_audio_data.extend(raw_audio_mono)
                 self.session_segments.append({
                     "text": final_text,
-                    "start_time": start_time_offset,
+                    "start_time": start_time,
                     "duration": duration,
                     "isMissed": False
                 })
@@ -468,11 +473,9 @@ class AudioTranscriber:
                 audio_cache.pop(next(iter(audio_cache)))
                 
             if self.mode == "batch":
-                start_time_offset = round(len(self.session_audio_data) / (sample_rate * sample_width), 1)
-                self.session_audio_data.extend(raw_audio_mono)
                 self.session_segments.append({
                     "text": "[발음 불명확 / 미인식]",
-                    "start_time": start_time_offset,
+                    "start_time": start_time,
                     "duration": duration,
                     "isMissed": True
                 })
