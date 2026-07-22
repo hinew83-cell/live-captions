@@ -270,11 +270,29 @@ document.addEventListener("DOMContentLoaded", () => {
                     placeholder.remove();
                 }
                 
+                addSystemTag("(녹음중지)");
+                
+                // Render the Whole Recording Player Card directly below (녹음중지)
+                const wholePlayerLine = document.createElement("div");
+                wholePlayerLine.className = "caption-line whole-recording-player-line";
+                wholePlayerLine.style.fontSize = `${fontSize}rem`;
+                wholePlayerLine.innerHTML = `
+                    <div class="whole-audio-card glass-card" style="padding: 1rem; margin: 0.75rem 0; border: 1px solid var(--primary-color); background: rgba(114, 9, 183, 0.08); border-radius: 12px;">
+                        <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; font-weight: 600; color: var(--primary-color); font-size: 0.95rem;">
+                            <i class="fa-solid fa-file-audio"></i> 전체 통녹음 다시듣기 (타임라인 재생바)
+                        </div>
+                        <audio src="/api/audio/${msg.session_id}" controls style="width: 100%; border-radius: 8px; outline: none; height: 36px;"></audio>
+                    </div>
+                `;
+                captionBody.appendChild(wholePlayerLine);
+                
                 if (msg.segments && msg.segments.length > 0) {
                     msg.segments.forEach(seg => {
-                        addCaption(seg.text, msg.session_id, seg.isMissed || false, seg.duration, seg.start_time);
+                        addCaption(seg.text, seg.segment_id, seg.isMissed || false, seg.duration, null);
                     });
                 }
+                
+                captionBody.scrollTop = captionBody.scrollHeight;
             } else if (msg.type === "status") {
                 if (msg.status === "listening") {
                     updateStatus("listening", "녹음/분석 중");

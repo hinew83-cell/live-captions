@@ -240,8 +240,15 @@ class AudioTranscriber:
                     final_text = "[발음 불명확 / 미인식]"
                     is_missed = True
                 
+                segment_id = str(uuid.uuid4())
+                wav_bytes = pcm_to_wav(raw_audio_mono, self.sample_rate, channels=1, sample_width=2)
+                audio_cache[segment_id] = wav_bytes
+                if len(audio_cache) > 100:
+                    audio_cache.pop(next(iter(audio_cache)))
+                
                 self.session_segments.append({
                     "text": final_text,
+                    "segment_id": segment_id,
                     "start_time": self.current_segment_start_time,
                     "duration": duration,
                     "isMissed": is_missed
@@ -442,6 +449,7 @@ class AudioTranscriber:
             if self.mode == "batch":
                 self.session_segments.append({
                     "text": final_text,
+                    "segment_id": segment_id,
                     "start_time": start_time,
                     "duration": duration,
                     "isMissed": False
@@ -475,6 +483,7 @@ class AudioTranscriber:
             if self.mode == "batch":
                 self.session_segments.append({
                     "text": "[발음 불명확 / 미인식]",
+                    "segment_id": segment_id,
                     "start_time": start_time,
                     "duration": duration,
                     "isMissed": True
