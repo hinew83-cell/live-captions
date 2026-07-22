@@ -7,7 +7,7 @@ import math
 import numpy as np
 import pyaudiowpatch as pyaudio
 import speech_recognition as sr
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Response
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import os
@@ -610,8 +610,16 @@ async def websocket_endpoint(websocket: WebSocket):
             global_transcriber.websocket = None
             global_transcriber.main_loop = None
 
+# Middleware to disable browser caching for static files
+@app.middleware("http")
+async def add_no_cache_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
 # Mount frontend static files
-# Make sure this directory exists or we create it
 frontend_path = os.path.join(os.path.dirname(__file__), "static")
 if not os.path.exists(frontend_path):
     os.makedirs(frontend_path)
