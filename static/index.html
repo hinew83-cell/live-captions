@@ -19,7 +19,7 @@
         <aside class="sidebar">
             <div class="brand">
                 <i class="fa-solid fa-waveform-lines brand-icon"></i>
-                <h1>LiveCaptions <span class="version-badge">v0.13</span></h1>
+                <h1>LiveCaptions <span class="version-badge">v0.14</span></h1>
             </div>
             
             <div class="control-group">
@@ -60,16 +60,17 @@
 
             <!-- Visualizer & Status Info Grouped at Sidebar Bottom -->
             <div class="sidebar-bottom-group" style="margin-top: auto; display: flex; flex-direction: column; gap: 0.5rem;">
-                <div class="control-group settings-details" style="border-top: 1px solid var(--border-color); padding-top: 0.75rem; margin-top: 0;">
+                <hr style="border: none; border-top: 1px solid var(--border-color); margin: 0.5rem 0 0.25rem 0;">
+                <div class="visualizer-container sidebar-visualizer" style="margin-top: 0;">
+                    <canvas id="waveform-canvas"></canvas>
+                    <div class="audio-state-text" id="audio-amplitude">오디오 신호 없음</div>
+                </div>
+
+                <div class="control-group settings-details" style="border-top: none; padding-top: 0; margin-top: 0;">
                     <div class="status-indicator">
                         <span class="status-dot" id="status-dot"></span>
                         <span id="status-text">대기 중</span>
                     </div>
-                </div>
-
-                <div class="visualizer-container sidebar-visualizer" style="margin-top: 0;">
-                    <canvas id="waveform-canvas"></canvas>
-                    <div class="audio-state-text" id="audio-amplitude">오디오 신호 없음</div>
                 </div>
             </div>
 
