@@ -138,12 +138,12 @@ class AudioTranscriber:
                 logger.error(f"Error reading device {i}: {e}")
         return devices
 
-    def start_listening(self, device_index: int, language: str = "ko-KR", mode: str = "realtime"):
+    def start_listening(self, device_index: int, language: str = "ko-KR", mode: str = "batch"):
         if self.is_running:
             self.stop_listening()
             
         self.language = language
-        self.mode = mode
+        self.mode = "batch"
         self.session_audio_data = bytearray()
         self.session_segments = []
         self.is_running = True
