@@ -91,6 +91,9 @@ class AudioTranscriber:
         self.speech_started = False
         
         self.language = "ko-KR"
+        self.mode = "realtime"
+        self.session_audio_data = bytearray()
+        self.session_transcripts = []
         self.silence_threshold = 300  # Dynamic starting threshold
         self.silence_duration = 0.95  # Natural pause trigger (0.95s gap)
         self.max_speech_duration = 7.5  # Collect up to 7.5s of speech for rich context
@@ -135,11 +138,14 @@ class AudioTranscriber:
                 logger.error(f"Error reading device {i}: {e}")
         return devices
 
-    def start_listening(self, device_index: int, language: str = "ko-KR"):
+    def start_listening(self, device_index: int, language: str = "ko-KR", mode: str = "realtime"):
         if self.is_running:
             self.stop_listening()
             
         self.language = language
+        self.mode = mode
+        self.session_audio_data = bytearray()
+        self.session_transcripts = []
         self.is_running = True
         self.audio_buffer = bytearray()
         self.speech_started = False
@@ -212,6 +218,35 @@ class AudioTranscriber:
         global active_streams_count
         active_streams_count = max(0, active_streams_count - 1)
         logger.info("Stopped listening.")
+        
+        # If in batch mode, compile and send the final merged result
+        if self.mode == "batch":
+            combined_text = " ".join(self.session_transcripts).strip()
+            if not combined_text:
+                combined_text = "[일괄 변환 결과 없음 / 감지된 음성 없음]"
+                
+            session_id = str(uuid.uuid4())
+            total_duration = 0.0
+            
+            if self.session_audio_data:
+                total_duration = round(len(self.session_audio_data) / (self.sample_rate * 2), 1) # 2 bytes per sample (paInt16)
+                wav_bytes = pcm_to_wav(bytes(self.session_audio_data), self.sample_rate, channels=1, sample_width=2)
+                audio_cache[session_id] = wav_bytes
+                if len(audio_cache) > 100:
+                    audio_cache.pop(next(iter(audio_cache)))
+            
+            logger.info(f"Sending batch result. Text: {combined_text}, Duration: {total_duration}s")
+            if self.main_loop and self.websocket:
+                asyncio.run_coroutine_threadsafe(
+                    self.websocket.send_json({
+                        "type": "batch_result",
+                        "text": combined_text,
+                        "segment_id": session_id,
+                        "duration": total_duration,
+                        "timestamp": time.time()
+                    }),
+                    self.main_loop
+                )
 
     def _audio_loop(self):
         last_transcribe_time = time.time()
@@ -363,17 +398,22 @@ class AudioTranscriber:
                 final_text = text
             
             logger.info(f"Transcription result: {final_text}")
-            if self.main_loop and self.websocket:
-                asyncio.run_coroutine_threadsafe(
-                    self.websocket.send_json({
-                        "type": "caption",
-                        "text": final_text,
-                        "segment_id": segment_id,
-                        "duration": duration,
-                        "timestamp": time.time()
-                    }),
-                    self.main_loop
-                )
+            
+            if self.mode == "batch":
+                self.session_audio_data.extend(raw_audio_mono)
+                self.session_transcripts.append(final_text)
+            else:
+                if self.main_loop and self.websocket:
+                    asyncio.run_coroutine_threadsafe(
+                        self.websocket.send_json({
+                            "type": "caption",
+                            "text": final_text,
+                            "segment_id": segment_id,
+                            "duration": duration,
+                            "timestamp": time.time()
+                        }),
+                        self.main_loop
+                    )
         except sr.UnknownValueError:
             logger.info("Speech Recognition could not understand audio")
             
@@ -382,25 +422,30 @@ class AudioTranscriber:
             if duration < 0.8:
                 return
                 
-            # Cache the audio even if unrecognized, so the user can listen to it
-            segment_id = str(uuid.uuid4())
-            wav_bytes = pcm_to_wav(raw_audio_mono, sample_rate, channels=1, sample_width=sample_width)
-            audio_cache[segment_id] = wav_bytes
-            if len(audio_cache) > 100:
-                audio_cache.pop(next(iter(audio_cache)))
-                
-            if self.main_loop and self.websocket:
-                asyncio.run_coroutine_threadsafe(
-                    self.websocket.send_json({
-                        "type": "caption",
-                        "text": "[발음 불명확 / 미인식]",
-                        "isMissed": True,
-                        "segment_id": segment_id,
-                        "duration": duration,
-                        "timestamp": time.time()
-                    }),
-                    self.main_loop
-                )
+            if self.mode == "batch":
+                self.session_audio_data.extend(raw_audio_mono)
+                # In batch mode, we skip adding anything to session_transcripts for missed blocks 
+                # so the text flow is fully continuous.
+            else:
+                # Cache the audio even if unrecognized, so the user can listen to it
+                segment_id = str(uuid.uuid4())
+                wav_bytes = pcm_to_wav(raw_audio_mono, sample_rate, channels=1, sample_width=sample_width)
+                audio_cache[segment_id] = wav_bytes
+                if len(audio_cache) > 100:
+                    audio_cache.pop(next(iter(audio_cache)))
+                    
+                if self.main_loop and self.websocket:
+                    asyncio.run_coroutine_threadsafe(
+                        self.websocket.send_json({
+                            "type": "caption",
+                            "text": "[발음 불명확 / 미인식]",
+                            "isMissed": True,
+                            "segment_id": segment_id,
+                            "duration": duration,
+                            "timestamp": time.time()
+                        }),
+                        self.main_loop
+                    )
         except sr.RequestError as e:
             logger.error(f"Could not request results from Google Speech Recognition service; {e}")
             if self.main_loop and self.websocket:
@@ -459,7 +504,8 @@ async def websocket_endpoint(websocket: WebSocket):
             if action == "start":
                 device_index = message.get("device_index", 0)
                 language = message.get("language", "ko-KR")
-                success = transcriber.start_listening(device_index, language)
+                mode = message.get("mode", "realtime")
+                success = transcriber.start_listening(device_index, language, mode)
                 await websocket.send_json({
                     "type": "status",
                     "status": "listening" if success else "error",

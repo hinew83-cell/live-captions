@@ -78,6 +78,8 @@ document.addEventListener("DOMContentLoaded", () => {
     
     const canvas = document.getElementById("waveform-canvas");
     const ctx = canvas.getContext("2d");
+    
+    const modeSelect = document.getElementById("mode-select");
 
     // State Variables
     let ws = null;
@@ -177,6 +179,16 @@ document.addEventListener("DOMContentLoaded", () => {
             } else if (msg.type === "caption") {
                 removeTypingIndicator();
                 addCaption(msg.text, msg.segment_id, msg.isMissed, msg.duration);
+            } else if (msg.type === "batch_result") {
+                removeTypingIndicator();
+                
+                // Clear any batch placeholders
+                const placeholder = captionBody.querySelector(".batch-recording-placeholder");
+                if (placeholder) {
+                    placeholder.remove();
+                }
+                
+                addCaption(msg.text, msg.segment_id, false, msg.duration);
             } else if (msg.type === "status") {
                 if (msg.status === "listening") {
                     updateStatus("listening", "녹음/분석 중");
@@ -399,14 +411,31 @@ document.addEventListener("DOMContentLoaded", () => {
         ws.send(JSON.stringify({
             action: "start",
             device_index: deviceIndex,
-            language: languageSelect.value
+            language: languageSelect.value,
+            mode: modeSelect.value
         }));
+        
+        // If in batch mode, display a clear warning/helper message in the caption box
+        if (modeSelect.value === "batch") {
+            const placeholder = captionBody.querySelector(".caption-placeholder");
+            if (placeholder) {
+                captionBody.innerHTML = "";
+            }
+            const batchMsg = document.createElement("div");
+            batchMsg.className = "caption-line live batch-recording-placeholder";
+            batchMsg.style.fontSize = `${fontSize}rem`;
+            batchMsg.style.color = "var(--text-muted)";
+            batchMsg.style.fontStyle = "italic";
+            batchMsg.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> 일괄 변환 녹음이 진행 중입니다. 소리가 감지되고 있으며, 중지 버튼을 누르면 누적된 전체 내용이 한 번에 타이핑됩니다...`;
+            captionBody.appendChild(batchMsg);
+        }
         
         isListening = true;
         startBtn.disabled = true;
         stopBtn.disabled = false;
         deviceSelect.disabled = true;
         languageSelect.disabled = true;
+        modeSelect.disabled = true;
     });
 
     stopBtn.addEventListener("click", handleStop);
@@ -421,6 +450,7 @@ document.addEventListener("DOMContentLoaded", () => {
         stopBtn.disabled = true;
         deviceSelect.disabled = false;
         languageSelect.disabled = false;
+        modeSelect.disabled = false;
         targetVolume = 0;
         audioAmplitude.textContent = "오디오 신호 없음";
         updateStatus("active", "대기 중");
